@@ -11,36 +11,17 @@
 # License along with this program. If not, see
 # http://www.gnu.org/licenses/.
 
-from OpenSSL import crypto
-
-import logging
-import zipfile
 import socket
 import os
-import webbrowser
 import random
 
-from getpass import getpass
+from OpenSSL import crypto
 
-import tornado.web
-import tornado.autoreload
-from tornado.log import enable_pretty_logging
-
-from traitlets import Unicode
 from kernel_gateway.gatewayapp import KernelGatewayApp
-from notebook.base.handlers import IPythonHandler
-import notebook.auth
 
 CERT_DIRECTORY = "certificates"
 CERT_FILE = "quarc.crt"
 KEY_FILE = "quarc.key"
-PASSWORD_FILE = "password.txt"
-
-
-class BaseIndex(IPythonHandler):
-    def get(self):
-        with open('index.html', 'r') as f:
-            self.write(f.read())
 
 
 class Quarc(KernelGatewayApp):
@@ -91,16 +72,8 @@ def create_certificate(ip):
 
     return certificate_filepath, key_filepath
 
-def main():
-    if os.path.exists(PASSWORD_FILE):
-        with open(PASSWORD_FILE, 'r') as f:
-            password = f.read()
-    else:
-        print("Define password:")
-        password = notebook.auth.passwd(getpass())
-        with open(PASSWORD_FILE, 'w') as f:
-            f.write(password)
 
+def main():
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         s.connect(('8.8.8.8', 1))
@@ -110,11 +83,8 @@ def main():
 
     certificate, key = create_certificate(ip)
 
-    # webbrowser.open("https://{}:7575".format(ip))
-
     Quarc.launch_instance(
-        password=password, token='', port=7575,
-        ip=ip, port_retries=0,
+        port=7575, ip=ip, port_retries=0,
         allow_origin='https://quarc.services',
         allow_headers='X-XSRFToken,Content-Type',
         allow_methods="DELETE",
