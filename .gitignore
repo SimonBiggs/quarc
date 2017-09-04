@@ -102,3 +102,4 @@ ENV/
 
 password.txt
 certificates/
+auth_token.txt

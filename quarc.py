@@ -23,6 +23,7 @@ from kernel_gateway.gatewayapp import KernelGatewayApp
 CERT_DIRECTORY = "certificates"
 CERT_FILE = "quarc.crt"
 KEY_FILE = "quarc.key"
+AUTH_FILE = "auth_token.txt"
 
 
 class Quarc(KernelGatewayApp):
@@ -75,6 +76,14 @@ def create_certificate(ip):
 
 
 def main():
+    if os.path.exists(AUTH_FILE):
+        with open(AUTH_FILE, 'r') as file:
+            auth_token = file.read()
+    else:
+        auth_token = input('Define authorisation token: ')
+        with open(AUTH_FILE, 'w') as file:
+            file.write(auth_token)
+
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         s.connect(('8.8.8.8', 1))
@@ -90,11 +99,16 @@ def main():
         if sys.argv[-1] == 'dev':
             allow_origin='http://localhost:4200'
 
+    print("Allowing access from: {}".format(allow_origin))
+    print("Authentication token: {}".format(auth_token))
+
     Quarc.launch_instance(
         port=7575, ip=ip, port_retries=0,
+        allow_credentials='true',
+        auth_token='test',
         allow_origin=allow_origin,
-        allow_headers='X-XSRFToken,Content-Type',
-        allow_methods="DELETE",
+        allow_headers='X-XSRFToken,Content-Type,Authorization',
+        allow_methods="DELETE,POST,OPTIONS",
         certfile=certificate, 
         keyfile=key)
 
