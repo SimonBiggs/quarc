@@ -2,7 +2,7 @@ from setuptools import setup
 
 setup(
     name = "quarc",
-    version = "0.1.0-alpha.2",
+    version = "0.1.0-alpha.3",
     author = "Simon Biggs",
     author_email = "mail@simonbiggs.net",
     description = "Open a Quarc Gateway",

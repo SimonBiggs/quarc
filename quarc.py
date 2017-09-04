@@ -14,6 +14,7 @@
 import socket
 import os
 import random
+import sys
 
 from OpenSSL import crypto
 
@@ -82,10 +83,17 @@ def main():
         ip = socket.gethostbyname(socket.gethostname())
 
     certificate, key = create_certificate(ip)
+    
+    if len(sys.argv) > 0:
+        allow_origin = sys.argv[-1]
+    else:
+        allow_origin='https://quarc.services'
+
+    print(allow_origin)
 
     Quarc.launch_instance(
         port=7575, ip=ip, port_retries=0,
-        allow_origin='https://quarc.services',
+        allow_origin=allow_origin,
         allow_headers='X-XSRFToken,Content-Type',
         allow_methods="DELETE",
         certfile=certificate, 
