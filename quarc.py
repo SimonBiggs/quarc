@@ -84,12 +84,11 @@ def main():
 
     certificate, key = create_certificate(ip)
     
-    if len(sys.argv) > 0:
-        allow_origin = sys.argv[-1]
-    else:
-        allow_origin='https://quarc.services'
+    allow_origin='https://quarc.services'
 
-    print(allow_origin)
+    if len(sys.argv) > 0:
+        if sys.argv[-1] == 'dev':
+            allow_origin='http://localhost:4200'
 
     Quarc.launch_instance(
         port=7575, ip=ip, port_retries=0,
