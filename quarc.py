@@ -105,7 +105,7 @@ def main():
     Quarc.launch_instance(
         port=7575, ip=ip, port_retries=0,
         allow_credentials='true',
-        auth_token='test',
+        auth_token=auth_token,
         allow_origin=allow_origin,
         allow_headers='X-XSRFToken,Content-Type,Authorization',
         allow_methods="DELETE,POST,OPTIONS",
