@@ -17,6 +17,7 @@ import sys
 import ssl
 from getpass import getpass
 import datetime
+import ipaddress
 
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import serialization
@@ -112,7 +113,6 @@ def create_certificate(ip):
             backend=default_backend()
         )
         
-
         kdf.verify(passphrase, passphrase_key)
 
     else:
@@ -139,8 +139,8 @@ def create_certificate(ip):
         x509.NameAttribute(NameOID.COUNTRY_NAME, "AU"),
         x509.NameAttribute(NameOID.STATE_OR_PROVINCE_NAME, "NSW"),
         x509.NameAttribute(NameOID.LOCALITY_NAME, "Wagga Wagga"),
-        x509.NameAttribute(NameOID.ORGANIZATION_NAME, "Quarc CA"),
-        x509.NameAttribute(NameOID.COMMON_NAME, "https://quarc.services")
+        x509.NameAttribute(NameOID.ORGANIZATION_NAME, "Quarc"),
+        x509.NameAttribute(NameOID.COMMON_NAME, "quarc.services")
     ])
 
     if not os.path.exists(ca_key_filepath):
@@ -239,7 +239,11 @@ def create_certificate(ip):
         ).not_valid_before(
             datetime.datetime.utcnow()
         ).not_valid_after(
-            datetime.datetime.utcnow() + datetime.timedelta(days=3650)
+            datetime.datetime.utcnow() + datetime.timedelta(days=3652)
+        ).add_extension(
+            x509.SubjectAlternativeName([
+                x509.IPAddress(ipaddress.ip_address(ip))]),
+            critical=True,
         ).sign(ca_key, hashes.SHA256(), default_backend())
 
         with open(certificate_filepath, 'wb') as file:
