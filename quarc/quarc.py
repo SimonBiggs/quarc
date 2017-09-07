@@ -277,8 +277,8 @@ def main():
         if sys.argv[-1] == 'dev':
             allow_origin='http://localhost:4200'
 
-    print("Allowing access from: {}".format(allow_origin))
-    print("Authentication token: {}".format(auth_token))
+    print("Allowing kernel access from: {}".format(allow_origin))
+    print("Client API token: {}".format(auth_token))
 
     Quarc.launch_instance(
         port=7575, ip=ip, port_retries=0,
