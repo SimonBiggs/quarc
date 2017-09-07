@@ -1,0 +1,2 @@
+-e git+git@github.com:jupyter/kernel_gateway.git@e92d5ebe65ca6c04960d3c3b87bf5c8a73304311#egg=kernel_gateway
+-e .
