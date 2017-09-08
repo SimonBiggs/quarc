@@ -13,24 +13,26 @@
 
 
 import os
-import sys
 from setuptools import setup
 
-here = os.path.abspath(os.path.dirname(__file__))
+HERE = os.path.abspath(os.path.dirname(__file__))
 
 version_ns = {}
-with open(os.path.join(here, 'quarc', '_version.py')) as file:
+with open(os.path.join(HERE, 'quarc', '_version.py')) as file:
     exec(file.read(), {}, version_ns)
 
 setup(
-    name = "quarc",
-    version = version_ns['__version__'],
-    author = "Simon Biggs",
-    author_email = "mail@simonbiggs.net",
-    description = "Open a Quarc Gateway",
-    long_description = """This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for more details.""",
-    keywords = [],
-    packages = [
+    name="quarc",
+    version=version_ns['__version__'],
+    author="Simon Biggs",
+    author_email="mail@simonbiggs.net",
+    description="Open a Quarc Gateway",
+    long_description=(
+        "Starts a server that allows python code to be run within the web "
+        "applications found at https://quarc.services."
+    ),
+    keywords=[],
+    packages=[
         "quarc"
     ],
     entry_points={
