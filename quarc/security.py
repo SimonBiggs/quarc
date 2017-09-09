@@ -29,7 +29,8 @@ from ipython_genutils.path import ensure_dir_exists
 from jupyter_core.paths import jupyter_data_dir
 
 
-QUARC_DATA_DIRECTORY = os.path.join(jupyter_data_dir(), 'quarc')
+QUARC_DATA_DIRECTORY = os.path.join(
+    os.path.split(jupyter_data_dir())[0], 'quarc')
 AUTH_FILEPATH = os.path.join(QUARC_DATA_DIRECTORY, "auth_token.txt")
 
 CERT_DIRECTORY = os.path.join(QUARC_DATA_DIRECTORY, "certificates")
@@ -38,7 +39,7 @@ CERT_AUTHORITY_DIRECTORY = os.path.join(CERT_DIRECTORY, "authority")
 SALT_FILEPATH = os.path.join(CERT_DIRECTORY, "salt")
 PASSPHRASE_FILEPATH = os.path.join(CERT_DIRECTORY, "passphrase")
 
-CERT_FILENAME = "certificate.crt"
+CERT_FILENAME = "cert.crt"
 KEY_FILENAME = "key.pem"
 
 
@@ -53,8 +54,13 @@ def create_certificate(ip):
 
     ensure_dir_exists(CERT_DIRECTORY, mode=0o700)
     ensure_dir_exists(CERT_AUTHORITY_DIRECTORY, mode=0o700)
-        
-    passphrase = getpass(prompt='Passphrase: ').encode()
+    
+    if os.path.exists(PASSPHRASE_FILEPATH):
+        prompt = 'Passphrase: '
+    else:
+        prompt = 'Define passphrase: '
+
+    passphrase = getpass(prompt=prompt).encode()
 
     if os.path.exists(PASSPHRASE_FILEPATH):
         with open(SALT_FILEPATH, 'rb') as file:
@@ -136,27 +142,26 @@ def create_certificate(ip):
         with open(ca_certificate_filepath, 'wb') as file:
             file.write(cert.public_bytes(serialization.Encoding.PEM))
 
-        print(
-            "\n"
-            "================================================================="
-            "=================="
-            "\n\n"
-            "  A unique root certificate has been created at:\n\n"
-            "      {}\n\n"
-            "  This certificate needs to be installed as a certificate authority\n"
-            "  on each client that needs to access this server.\n\n"
-            "  WARNING: By installing this certificate you are aware that\n"
-            "  browsers will trust any website which can sign with the private\n"
-            "  key which has just been created at the following location:\n\n"
-            "      {}\n\n"
-            "  This private key is encrypted with the passphrase you just\n"
-            "  provided. This private key is unique to your installation. Do not\n"
-            "  share your encryption passphrase or the private key.\n\n"
-            "================================================================="
-            "=================="
-            "\n".format(ca_certificate_filepath, ca_key_filepath))
+        # print(
+        #     "\n"
+        #     "================================================================="
+        #     "==============="
+        #     "\n\n"
+        #     "  A unique root certificate has been created at:\n\n"
+        #     "      {}\n\n"
+        #     "  This certificate needs to be installed as a certificate authority\n"
+        #     "  on each client that needs to access this server.\n\n"
+        #     "  WARNING: By installing this certificate you are aware that\n"
+        #     "  browsers will trust any website which can sign with the private\n"
+        #     "  key which has just been created at the following location:\n\n"
+        #     "      {}\n\n"
+        #     "  This private key is encrypted with the passphrase you just\n"
+        #     "  provided. This private key is unique to your installation. Do not\n"
+        #     "  share your encryption passphrase or the private key.\n\n"
+        #     "================================================================="
+        #     "==============="
+        #     "\n".format(ca_certificate_filepath, ca_key_filepath))
 
-        # print("\n\n\n\n")
 
 
     if os.path.exists(certificate_filepath) & os.path.exists(key_filepath):
@@ -215,6 +220,24 @@ def create_certificate(ip):
 
         with open(certificate_filepath, 'wb') as file:
             file.write(cert.public_bytes(serialization.Encoding.PEM))
+
+
+        print(
+            "\n"
+            "================================================================="
+            "==============="
+            "\n\n"
+            "  An ssl certificate for your current IP address has been created at:\n\n"
+            "      {}\n\n"
+            "  This certificate is to be installed on each client that needs\n"
+            "  access to this server. This will inform browsers to trust this\n"
+            "  server while it is hosted at:\n\n"
+            "      https://{}:PORT\n\n"
+            "  So that this process does not need to be repeated this server\n"
+            "  should have a static IP.\n\n"
+            "================================================================="
+            "==============="
+            "\n".format(certificate_filepath, ip))
 
 
     return passphrase, certificate_filepath, key_filepath

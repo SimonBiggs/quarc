@@ -17,9 +17,12 @@ import sys
 import ssl
 
 from traitlets import Unicode, default
-from kernel_gateway.gatewayapp import KernelGatewayApp
 
-from .security import create_certificate, AUTH_FILEPATH, QUARC_DATA_DIRECTORY
+# Use custom fix until kernel_gateway pushes patch to pypi
+# from kernel_gateway.gatewayapp import KernelGatewayApp
+from kernel_gateway_quarc_custom_fix.gatewayapp import KernelGatewayApp
+
+from .security import create_certificate, AUTH_FILEPATH
 from ._version import __version__
 
 
