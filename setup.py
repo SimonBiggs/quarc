@@ -43,7 +43,7 @@ setup(
     license='AGPL3+',
     install_requires=[
         # 'jupyter_kernel_gateway',
-        'jupyter_kernel_gateway_quarc_custom_fix',
+        'jupyter_kernel_gateway_quarc_custom',
         'cryptography'
     ],
     classifiers = [],
