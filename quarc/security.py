@@ -33,28 +33,19 @@ QUARC_DATA_DIRECTORY = os.path.join(
     os.path.split(jupyter_data_dir())[0], 'quarc')
 AUTH_FILEPATH = os.path.join(QUARC_DATA_DIRECTORY, "auth_token.txt")
 
-CERT_DIRECTORY = os.path.join(QUARC_DATA_DIRECTORY, "certificates")
-CERT_AUTHORITY_DIRECTORY = os.path.join(CERT_DIRECTORY, "authority")
-
+# CERT_DIRECTORY = os.path.join(QUARC_DATA_DIRECTORY, "certificates")
+CERT_DIRECTORY = QUARC_DATA_DIRECTORY
 SALT_FILEPATH = os.path.join(CERT_DIRECTORY, "salt")
 PASSPHRASE_FILEPATH = os.path.join(CERT_DIRECTORY, "passphrase")
 
 CERT_FILENAME = "cert.crt"
 KEY_FILENAME = "key.pem"
 
+SERVER_DIRNAME = "server"
+AUTHORITY_DIRNAME = "authority"
 
-def create_certificate(ip):
-    certificate_filepath = os.path.join(CERT_DIRECTORY, ip, CERT_FILENAME)
-    key_filepath = os.path.join(CERT_DIRECTORY, ip, KEY_FILENAME)
 
-    ca_certificate_filepath = os.path.join(
-        CERT_AUTHORITY_DIRECTORY, CERT_FILENAME)
-    ca_key_filepath = os.path.join(
-        CERT_AUTHORITY_DIRECTORY, KEY_FILENAME)
-
-    ensure_dir_exists(CERT_DIRECTORY, mode=0o700)
-    ensure_dir_exists(CERT_AUTHORITY_DIRECTORY, mode=0o700)
-    
+def get_passphrase():
     if os.path.exists(PASSPHRASE_FILEPATH):
         prompt = 'Passphrase: '
     else:
@@ -99,83 +90,24 @@ def create_certificate(ip):
         with open(PASSPHRASE_FILEPATH, 'wb') as file:
             file.write(passphrase_key)
 
-    quarc_ca = x509.Name([
-        x509.NameAttribute(NameOID.COUNTRY_NAME, "AU"),
-        x509.NameAttribute(NameOID.STATE_OR_PROVINCE_NAME, "NSW"),
-        x509.NameAttribute(NameOID.LOCALITY_NAME, "Wagga Wagga"),
-        x509.NameAttribute(NameOID.ORGANIZATION_NAME, "Quarc"),
-        x509.NameAttribute(NameOID.COMMON_NAME, "quarc.services")
-    ])
-
-    if not os.path.exists(ca_key_filepath):
-        ca_key = rsa.generate_private_key(
-            public_exponent=65537,
-            key_size=2048,
-            backend=default_backend()
-        )
-
-        with open(ca_key_filepath, 'wb') as file:
-            file.write(
-                ca_key.private_bytes(
-                    encoding=serialization.Encoding.PEM,
-                    format=serialization.PrivateFormat.TraditionalOpenSSL,
-                    encryption_algorithm=serialization.BestAvailableEncryption(passphrase)
-                )
-            )
-
-        subject = issuer = quarc_ca
-
-        cert = x509.CertificateBuilder().subject_name(
-            subject
-        ).issuer_name(
-            issuer
-        ).public_key(
-            ca_key.public_key()
-        ).serial_number(
-            x509.random_serial_number()
-        ).not_valid_before(
-            datetime.datetime.utcnow()
-        ).not_valid_after(
-            datetime.datetime.utcnow() + datetime.timedelta(days=3650)
-        ).sign(ca_key, hashes.SHA256(), default_backend())
-
-        with open(ca_certificate_filepath, 'wb') as file:
-            file.write(cert.public_bytes(serialization.Encoding.PEM))
-
-        # print(
-        #     "\n"
-        #     "================================================================="
-        #     "==============="
-        #     "\n\n"
-        #     "  A unique root certificate has been created at:\n\n"
-        #     "      {}\n\n"
-        #     "  This certificate needs to be installed as a certificate authority\n"
-        #     "  on each client that needs to access this server.\n\n"
-        #     "  WARNING: By installing this certificate you are aware that\n"
-        #     "  browsers will trust any website which can sign with the private\n"
-        #     "  key which has just been created at the following location:\n\n"
-        #     "      {}\n\n"
-        #     "  This private key is encrypted with the passphrase you just\n"
-        #     "  provided. This private key is unique to your installation. Do not\n"
-        #     "  share your encryption passphrase or the private key.\n\n"
-        #     "================================================================="
-        #     "==============="
-        #     "\n".format(ca_certificate_filepath, ca_key_filepath))
+    return passphrase
 
 
+def get_filepaths(ip, dirname):
+    directory = os.path.join(
+        CERT_DIRECTORY, ip, dirname)
 
-    if os.path.exists(certificate_filepath) & os.path.exists(key_filepath):
-        pass
+    ensure_dir_exists(directory, mode=0o700)
 
-    else:
-        ensure_dir_exists(os.path.join(CERT_DIRECTORY, ip), mode=0o700)
+    cert_filepath = os.path.join(directory, CERT_FILENAME)
+    key_filepath = os.path.join(directory, KEY_FILENAME)
 
-        with open(ca_key_filepath, 'rb') as file:
-            ca_key = serialization.load_pem_private_key(
-                file.read(), 
-                password=passphrase,
-                backend=default_backend())
+    return cert_filepath, key_filepath
 
+
+def get_key(ip, key_filepath, passphrase):
+
+    if not os.path.exists(key_filepath):
         key = rsa.generate_private_key(
             public_exponent=65537,
             key_size=2048,
@@ -191,36 +123,56 @@ def create_certificate(ip):
                         passphrase)
                 )
             )
+    else:
+        with open(key_filepath, 'rb') as file:
+            key = serialization.load_pem_private_key(
+                file.read(), 
+                password=passphrase,
+                backend=default_backend())
 
-        subject = x509.Name([
-            x509.NameAttribute(NameOID.COUNTRY_NAME, "AU"),
-            x509.NameAttribute(NameOID.STATE_OR_PROVINCE_NAME, "NSW"),
-            x509.NameAttribute(NameOID.LOCALITY_NAME, "Wagga Wagga"),
-            x509.NameAttribute(NameOID.ORGANIZATION_NAME, "Quarc Kernel"),
-            x509.NameAttribute(NameOID.COMMON_NAME, ip)
-        ])
+
+    return key
+
+
+def authority_certificate(ip, passphrase):
+    auth_cert_filepath, auth_key_filepath = get_filepaths(
+        ip, AUTHORITY_DIRNAME)
+    
+    auth_key = get_key(ip, auth_key_filepath, passphrase)
+
+    issuer = subject = x509.Name([
+        x509.NameAttribute(NameOID.COUNTRY_NAME, "AU"),
+        x509.NameAttribute(NameOID.STATE_OR_PROVINCE_NAME, "NSW"),
+        x509.NameAttribute(NameOID.LOCALITY_NAME, "Wagga Wagga"),
+        x509.NameAttribute(NameOID.ORGANIZATION_NAME, "Quarc"),
+        x509.NameAttribute(NameOID.COMMON_NAME, "quarc.services")
+    ])
+
+    if not os.path.exists(auth_cert_filepath):
+        # Uses name constraints
+        # https://nameconstraints.bettertls.com/
 
         cert = x509.CertificateBuilder().subject_name(
             subject
         ).issuer_name(
-            quarc_ca
+            issuer
         ).public_key(
-            key.public_key()
+            auth_key.public_key()
         ).serial_number(
             x509.random_serial_number()
         ).not_valid_before(
             datetime.datetime.utcnow()
         ).not_valid_after(
-            datetime.datetime.utcnow() + datetime.timedelta(days=3652)
+            datetime.datetime.utcnow() + datetime.timedelta(days=3650)
         ).add_extension(
-            x509.SubjectAlternativeName([
-                x509.IPAddress(ipaddress.ip_address(ip))]),
+            x509.NameConstraints([
+                x509.IPAddress(ipaddress.ip_network(ip))], None),
             critical=True,
-        ).sign(ca_key, hashes.SHA256(), default_backend())
+        ).sign(auth_key, hashes.SHA256(), default_backend())
 
-        with open(certificate_filepath, 'wb') as file:
+
+        with open(auth_cert_filepath, 'wb') as file:
             file.write(cert.public_bytes(serialization.Encoding.PEM))
-
 
         print(
             "\n"
@@ -229,15 +181,71 @@ def create_certificate(ip):
             "\n\n"
             "  An ssl certificate for your current IP address has been created at:\n\n"
             "      {}\n\n"
-            "  This certificate is to be installed on each client that needs\n"
-            "  access to this server. This will inform browsers to trust this\n"
-            "  server while it is hosted at:\n\n"
+            "  This certificate is to be installed as a certificate authority\n"
+            "  on each client that needs access to this server. This\n"
+            "  has a constrained signing space by implemententing the Name\n"
+            "  Constraints extension. This certificate should only be able to\n"
+            "  get browsers to trust the server while it is hosted at:\n\n"
             "      https://{}:PORT\n\n"
-            "  So that this process does not need to be repeated this server\n"
-            "  should have a static IP.\n\n"
+            "  So that the certificate installtion process does not need to be\n"
+            "  repeated this server should have a static IP.\n\n"
+            "  To verify that your OS and browser respect Name Constraints\n"
+            "  vist https://nameconstraints.bettertls.com/\n\n"
             "================================================================="
             "==============="
-            "\n".format(certificate_filepath, ip))
+            "\n".format(auth_cert_filepath, ip))
+
+    return subject
 
 
-    return passphrase, certificate_filepath, key_filepath
+def server_certificate(ip, passphrase, issuer):
+    _, auth_key_filepath = get_filepaths(ip, AUTHORITY_DIRNAME)
+    server_cert_filepath, server_key_filepath = get_filepaths(
+        ip, SERVER_DIRNAME)
+    
+    auth_key = get_key(ip, auth_key_filepath, passphrase)
+    server_key = get_key(ip, server_key_filepath, passphrase)\
+    
+    subject = x509.Name([
+        x509.NameAttribute(NameOID.COUNTRY_NAME, "AU"),
+        x509.NameAttribute(NameOID.STATE_OR_PROVINCE_NAME, "NSW"),
+        x509.NameAttribute(NameOID.LOCALITY_NAME, "Wagga Wagga"),
+        x509.NameAttribute(NameOID.ORGANIZATION_NAME, "Quarc"),
+        x509.NameAttribute(NameOID.COMMON_NAME, "quarc.internal")
+    ])
+
+    if not os.path.exists(server_cert_filepath):
+        cert = x509.CertificateBuilder().subject_name(
+            subject
+        ).issuer_name(
+            issuer
+        ).public_key(
+            server_key.public_key()
+        ).serial_number(
+            x509.random_serial_number()
+        ).not_valid_before(
+            datetime.datetime.utcnow()
+        ).not_valid_after(
+            datetime.datetime.utcnow() + datetime.timedelta(days=3650)
+        ).add_extension(
+            x509.SubjectAlternativeName([
+                x509.IPAddress(ipaddress.ip_address(ip))]),
+            critical=True,
+        ).sign(auth_key, hashes.SHA256(), default_backend())
+
+
+        with open(server_cert_filepath, 'wb') as file:
+            file.write(cert.public_bytes(serialization.Encoding.PEM))
+
+
+    return server_cert_filepath, server_key_filepath
+
+
+def create_certificate(ip):
+    ensure_dir_exists(CERT_DIRECTORY, mode=0o700)
+    passphrase = get_passphrase()
+
+    issuer = authority_certificate(ip, passphrase)
+    cert_filepath, key_filepath = server_certificate(ip, passphrase, issuer)
+
+    return passphrase, cert_filepath, key_filepath
