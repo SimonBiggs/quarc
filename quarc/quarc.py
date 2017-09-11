@@ -11,17 +11,54 @@
 # License along with this program. If not, see
 # http://www.gnu.org/licenses/.
 
-import socket
 import os
+import socket
 import sys
-import ssl
+import webbrowser
+import signal
+from multiprocessing import Process
 
-from traitlets import Unicode, default
+import tornado.ioloop
+import tornado.web
 
 from kernel_gateway.gatewayapp import KernelGatewayApp
 
-from .security import create_certificate, AUTH_FILEPATH
+from .security import create_certificate, get_auth_token
 from ._version import __version__
+
+KERNEL_PORT = 17575
+CERTIFICATE_PORT = 19393
+
+
+class FileHandler(tornado.web.StaticFileHandler):
+    def initialize(self, path):
+        self.dirname, self.filename = os.path.split(path)
+        super(FileHandler, self).initialize(self.dirname)
+
+    def get(self, path=None, include_body=True):
+        self.set_header(
+            'Content-Disposition', 'attachment; filename={}'.format(
+                self.filename))
+        super(FileHandler, self).get(self.filename, include_body)
+
+
+def stop_tornado():
+    tornado.ioloop.IOLoop.instance().stop()
+
+
+def serve_certificate(filepath):
+    app = tornado.web.Application([
+        (r'/', FileHandler, {'path': filepath})
+    ])
+
+    app.listen(CERTIFICATE_PORT)
+
+    signal.signal(signal.SIGTERM, stop_tornado)
+    
+    try:
+        tornado.ioloop.IOLoop.instance().start()
+    except KeyboardInterrupt:
+        pass
 
 
 class Quarc(KernelGatewayApp):
@@ -33,24 +70,6 @@ class Quarc(KernelGatewayApp):
         Provides kernel access to https://quarc.services.
     """
 
-    # SSL Passphrase
-    passphrase_env = 'QU_PASSPHRASE'
-    passphrase = Unicode(config=True,
-        help='Passphrase for SSL certificates (QU_PASSPHRASE env var)'
-    )
-
-    @default('passphrase')
-    def _passphrase_default(self):
-        return os.getenv(self.passphrase_env, '')
-
-
-    def _build_ssl_options(self):       
-        ssl_ctx = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
-        ssl_ctx.load_cert_chain(
-            self.certfile, self.keyfile, password=self.passphrase)
-
-        return ssl_ctx
-
 
 def main():
     try:
@@ -60,34 +79,38 @@ def main():
     except:
         ip = socket.gethostbyname(socket.gethostname())
 
-    passphrase, certificate, key = create_certificate(ip)
+    auth_cert_filepath, certificate, key = create_certificate(ip)
     
     allow_origin='https://quarc.services'
     if sys.argv[-1] == 'dev':
         allow_origin='http://localhost:4200'
 
-    print("Allowing kernel access from: {}".format(allow_origin))
+    auth_token = get_auth_token()
 
-    if os.path.exists(AUTH_FILEPATH):
-        with open(AUTH_FILEPATH, 'r') as file:
-            auth_token = file.read()
-    else:
-        auth_token = input('Define client API token: ')
-        with open(AUTH_FILEPATH, 'w') as file:
-            file.write(auth_token)
+    print(
+        '\nConnect to this server by going to the following URL in your browser:')
+    
+    url = '{}?ip={}&token={}\n'.format(
+        allow_origin, ip, auth_token)
+    print('    {}'.format(url))
+    webbrowser.open(url)
 
-    print("Client API token: {}".format(auth_token))
+    print('Authority certificate hosted at http://{}:{}'.format(
+        ip, CERTIFICATE_PORT))
+
+    Process(
+        target=serve_certificate,
+        args=(auth_cert_filepath,)).start()
 
     Quarc.launch_instance(
-        port=7575, ip=ip, port_retries=0,
+        port=KERNEL_PORT, ip=ip, port_retries=0,
         allow_credentials='true',
         auth_token=auth_token,
         allow_origin=allow_origin,
         allow_headers='X-XSRFToken,Content-Type,Authorization',
         allow_methods="DELETE,POST,OPTIONS",
         certfile=certificate, 
-        keyfile=key,
-        passphrase=passphrase)
+        keyfile=key)
 
 
 if __name__ == "__main__":

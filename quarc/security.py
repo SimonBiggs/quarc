@@ -13,14 +13,14 @@
 """Create x509 certificates for use https access."""
 
 import os
-from getpass import getpass
+import base64
 import datetime
 import ipaddress
 
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
-from cryptography.hazmat.primitives.kdf.scrypt import Scrypt
+
 from cryptography import x509
 from cryptography.x509.oid import NameOID
 from cryptography.hazmat.primitives import hashes
@@ -33,10 +33,7 @@ QUARC_DATA_DIRECTORY = os.path.join(
     os.path.split(jupyter_data_dir())[0], 'quarc')
 AUTH_FILEPATH = os.path.join(QUARC_DATA_DIRECTORY, "auth_token.txt")
 
-# CERT_DIRECTORY = os.path.join(QUARC_DATA_DIRECTORY, "certificates")
 CERT_DIRECTORY = QUARC_DATA_DIRECTORY
-SALT_FILEPATH = os.path.join(CERT_DIRECTORY, "salt")
-PASSPHRASE_FILEPATH = os.path.join(CERT_DIRECTORY, "passphrase")
 
 CERT_FILENAME = "cert.crt"
 KEY_FILENAME = "key.pem"
@@ -44,53 +41,7 @@ KEY_FILENAME = "key.pem"
 SERVER_DIRNAME = "server"
 AUTHORITY_DIRNAME = "authority"
 
-
-def get_passphrase():
-    if os.path.exists(PASSPHRASE_FILEPATH):
-        prompt = 'Passphrase: '
-    else:
-        prompt = 'Define passphrase: '
-
-    passphrase = getpass(prompt=prompt).encode()
-
-    if os.path.exists(PASSPHRASE_FILEPATH):
-        with open(SALT_FILEPATH, 'rb') as file:
-            salt = file.read()
-
-        with open(PASSPHRASE_FILEPATH, 'rb') as file:
-            passphrase_key = file.read()
-
-        kdf = Scrypt(
-            salt=salt,
-            length=32,
-            n=2**14,
-            r=8,
-            p=1,
-            backend=default_backend()
-        )
-        
-        kdf.verify(passphrase, passphrase_key)
-
-    else:
-        salt = os.urandom(16)
-        with open(SALT_FILEPATH, 'wb') as file:
-            file.write(salt)
-
-        kdf = Scrypt(
-            salt=salt,
-            length=32,
-            n=2**14,
-            r=8,
-            p=1,
-            backend=default_backend()
-        )
-
-        passphrase_key = kdf.derive(passphrase)
-
-        with open(PASSPHRASE_FILEPATH, 'wb') as file:
-            file.write(passphrase_key)
-
-    return passphrase
+DEFAULT_ENTROPY = 32
 
 
 def get_filepaths(ip, dirname):
@@ -105,40 +56,41 @@ def get_filepaths(ip, dirname):
     return cert_filepath, key_filepath
 
 
-def get_key(ip, key_filepath, passphrase):
+def make_key():
+    return rsa.generate_private_key(
+        public_exponent=65537,
+        key_size=2048,
+        backend=default_backend()
+    )
 
+
+def get_persistent_key(key_filepath):
     if not os.path.exists(key_filepath):
-        key = rsa.generate_private_key(
-            public_exponent=65537,
-            key_size=2048,
-            backend=default_backend()
-        )
+        key = make_key()
 
         with open(key_filepath, 'wb') as file:
             file.write(
                 key.private_bytes(
                     encoding=serialization.Encoding.PEM,
                     format=serialization.PrivateFormat.TraditionalOpenSSL,
-                    encryption_algorithm=serialization.BestAvailableEncryption(
-                        passphrase)
+                    encryption_algorithm=serialization.NoEncryption()
                 )
             )
     else:
         with open(key_filepath, 'rb') as file:
             key = serialization.load_pem_private_key(
                 file.read(), 
-                password=passphrase,
+                password=None,
                 backend=default_backend())
-
 
     return key
 
 
-def authority_certificate(ip, passphrase):
-    auth_cert_filepath, auth_key_filepath = get_filepaths(
+def authority_certificate(ip):
+    auth_cert_filepath, _ = get_filepaths(
         ip, AUTHORITY_DIRNAME)
-    
-    auth_key = get_key(ip, auth_key_filepath, passphrase)
+
+    auth_key = make_key()
 
     issuer = subject = x509.Name([
         x509.NameAttribute(NameOID.COUNTRY_NAME, "AU"),
@@ -148,7 +100,12 @@ def authority_certificate(ip, passphrase):
         x509.NameAttribute(NameOID.COMMON_NAME, "quarc.services")
     ])
 
-    if not os.path.exists(auth_cert_filepath):
+    if os.path.exists(auth_cert_filepath):
+        # print(
+        #     "\nTLS authority certificate:\n"
+        #     "    {}\n".format(auth_cert_filepath))
+        pass
+    else:
         # Uses name constraints
         # https://nameconstraints.bettertls.com/
 
@@ -179,32 +136,27 @@ def authority_certificate(ip, passphrase):
             "================================================================="
             "==============="
             "\n\n"
-            "  An ssl certificate for your current IP address has been created at:\n\n"
+            "  A TLS certificate for your current IP address has been created at:\n\n"
             "      {}\n\n"
             "  This certificate is to be installed as a certificate authority\n"
-            "  on each client that needs access to this server. This\n"
-            "  has a constrained signing space by implemententing the Name\n"
-            "  Constraints extension. This certificate should only be able to\n"
-            "  get browsers to trust the server while it is hosted at:\n\n"
+            "  on each client that needs access to this server. This certificate\n"
+            "  will only allow authentication for servers hosted at the followng\n"
+            "  address:\n\n"
             "      https://{}:PORT\n\n"
-            "  So that the certificate installtion process does not need to be\n"
-            "  repeated this server should have a static IP.\n\n"
-            "  To verify that your OS and browser respect Name Constraints\n"
-            "  vist https://nameconstraints.bettertls.com/\n\n"
+            "  This is achieved by implementing the Name Constraints extension\n"
+            "  and by not storing the certificate authority private key to disk.\n\n"
             "================================================================="
             "==============="
             "\n".format(auth_cert_filepath, ip))
 
-    return subject
+    return auth_cert_filepath, subject, auth_key
 
 
-def server_certificate(ip, passphrase, issuer):
-    _, auth_key_filepath = get_filepaths(ip, AUTHORITY_DIRNAME)
+def server_certificate(ip, issuer, issuer_key):
     server_cert_filepath, server_key_filepath = get_filepaths(
         ip, SERVER_DIRNAME)
     
-    auth_key = get_key(ip, auth_key_filepath, passphrase)
-    server_key = get_key(ip, server_key_filepath, passphrase)\
+    server_key = get_persistent_key(server_key_filepath)
     
     subject = x509.Name([
         x509.NameAttribute(NameOID.COUNTRY_NAME, "AU"),
@@ -231,7 +183,7 @@ def server_certificate(ip, passphrase, issuer):
             x509.SubjectAlternativeName([
                 x509.IPAddress(ipaddress.ip_address(ip))]),
             critical=True,
-        ).sign(auth_key, hashes.SHA256(), default_backend())
+        ).sign(issuer_key, hashes.SHA256(), default_backend())
 
 
         with open(server_cert_filepath, 'wb') as file:
@@ -243,9 +195,24 @@ def server_certificate(ip, passphrase, issuer):
 
 def create_certificate(ip):
     ensure_dir_exists(CERT_DIRECTORY, mode=0o700)
-    passphrase = get_passphrase()
 
-    issuer = authority_certificate(ip, passphrase)
-    cert_filepath, key_filepath = server_certificate(ip, passphrase, issuer)
+    auth_cert_filepath, issuer, issuer_key = authority_certificate(ip)
+    cert_filepath, key_filepath = server_certificate(ip, issuer, issuer_key)
 
-    return passphrase, cert_filepath, key_filepath
+    return auth_cert_filepath, cert_filepath, key_filepath
+
+
+def make_token(n):
+    return base64.urlsafe_b64encode(os.urandom(n)).rstrip(b'=').decode('ascii')
+
+
+def get_auth_token():
+    if os.path.exists(AUTH_FILEPATH):
+        with open(AUTH_FILEPATH, 'r') as file:
+            auth_token = file.read()
+    else:
+        auth_token = make_token(DEFAULT_ENTROPY)
+        with open(AUTH_FILEPATH, 'w') as file:
+            file.write(auth_token)
+
+    return auth_token
