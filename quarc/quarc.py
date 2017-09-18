@@ -13,7 +13,6 @@
 
 import os
 import socket
-import sys
 import webbrowser
 import signal
 from multiprocessing import Process
@@ -21,7 +20,8 @@ from multiprocessing import Process
 import tornado.ioloop
 import tornado.web
 
-from kernel_gateway.gatewayapp import KernelGatewayApp
+from notebook.notebookapp import NotebookApp
+# DEV = True
 
 from .security import create_certificate, get_auth_token
 from ._version import __version__
@@ -61,7 +61,7 @@ def serve_certificate(filepath):
         pass
 
 
-class Quarc(KernelGatewayApp):
+class Quarc(NotebookApp):
     name = 'quarc'
     version = __version__
     description = """
@@ -82,8 +82,8 @@ def main():
     auth_cert_filepath, certificate, key = create_certificate(ip)
     
     allow_origin='https://quarc.services'
-    if sys.argv[-1] == 'dev':
-        allow_origin='http://localhost:4200'
+    # if DEV:
+    #     allow_origin='http://localhost:4200'
 
     auth_token = get_auth_token()
 
@@ -104,13 +104,14 @@ def main():
 
     Quarc.launch_instance(
         port=KERNEL_PORT, ip=ip, port_retries=0,
-        allow_credentials='true',
-        auth_token=auth_token,
         allow_origin=allow_origin,
-        allow_headers='X-XSRFToken,Content-Type,Authorization',
-        allow_methods="DELETE,POST,OPTIONS",
         certfile=certificate, 
-        keyfile=key)
+        keyfile=key,
+        token=auth_token,
+        open_browser=False,
+        tornado_settings={
+            "xsrf_cookies": False
+        })
 
 
 if __name__ == "__main__":
